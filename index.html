@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Eye Morse</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222535;
+      --border: #2e3150;
+      --accent: #4f8ef7;
+      --accent2: #f7a24f;
+      --green: #4fba6f;
+      --red: #e05c5c;
+      --text: #e8eaf0;
+      --text-dim: #7c809a;
+      --dot-color: #4f8ef7;
+      --dash-color: #f7a24f;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 12px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    h1 span { color: var(--text-dim); font-weight: 400; font-size: 0.85rem; display: block; }
+
+    /* Layout */
+    .app-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    @media (min-width: 700px) {
+      .app-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .col-full { grid-column: 1 / -1; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .card-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    /* Camera */
+    .camera-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #video {
+      position: absolute;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      display: block;
+    }
+    #canvas {
+      position: absolute;
+      width: 100%; height: 100%;
+      top: 0; left: 0;
+      transform: scaleX(-1);
+    }
+    .camera-overlay {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      padding: 8px 12px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .eye-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+    }
+    .eye-circle {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      background: var(--green);
+      transition: background 0.05s;
+    }
+    .eye-circle.closed { background: var(--red); }
+
+    /* Start button */
+    #startBtn {
+      display: block;
+      margin: 8px auto 0;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 28px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    #startBtn:hover { opacity: 0.85; }
+    #startBtn.hidden { display: none; }
+
+    /* Status */
+    #status {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      text-align: center;
+      min-height: 1.2em;
+    }
+
+    /* Morse display */
+    .morse-current {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 40px;
+      align-items: center;
+      padding: 6px 0;
+    }
+    .morse-symbol {
+      font-size: 1.6rem;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .morse-symbol.dot { color: var(--dot-color); }
+    .morse-symbol.dash { color: var(--dash-color); }
+    .morse-cursor {
+      width: 3px; height: 28px;
+      background: var(--text-dim);
+      border-radius: 2px;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .morse-hint {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* Progress bars for eye closure */
+    .eye-bars { display: flex; gap: 10px; margin-top: 6px; }
+    .eye-bar-wrap { flex: 1; }
+    .eye-bar-label { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 3px; display: flex; justify-content: space-between; }
+    .eye-bar-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .eye-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.05s, background 0.1s;
+    }
+    #rightBar { background: var(--dot-color); }
+    #leftBar  { background: var(--dash-color); }
+    #bothBar  { background: var(--red); }
+
+    /* Settings */
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.8rem;
+    }
+    .setting-row label { color: var(--text-dim); white-space: nowrap; }
+    input[type=range] {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+    .setting-row span { min-width: 2.5em; text-align: right; }
+
+    /* Text area */
+    #outputText {
+      width: 100%;
+      height: 100px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1.1rem;
+      padding: 10px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    #outputText:focus { outline: none; border-color: var(--accent); }
+    .text-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .btn-sm {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--text); }
+
+    /* Decoded char flash */
+    .char-flash {
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--accent);
+      text-align: center;
+      min-height: 1.2em;
+      animation: fadeout 1s forwards;
+    }
+    @keyframes fadeout { 0%{opacity:1} 70%{opacity:1} 100%{opacity:0} }
+
+    /* Morse table */
+    .morse-table {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+      gap: 4px;
+    }
+    .morse-entry {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .morse-entry .char {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .morse-entry .code {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+    }
+    .morse-entry .code .d { color: var(--dot-color); }
+    .morse-entry .code .sh { color: var(--dash-color); }
+
+    .section-heading {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin: 8px 0 4px;
+    }
+
+    /* Instructions */
+    .instructions {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    .instructions strong { color: var(--text); }
+    .instructions .dot-c { color: var(--dot-color); font-weight: 700; }
+    .instructions .dash-c { color: var(--dash-color); font-weight: 700; }
+
+    /* Kana morse table (column-flow: あいうえお goes downward) */
+    .morse-table-kana {
+      display: grid;
+      grid-template-rows: repeat(5, auto);
+      grid-auto-flow: column;
+      gap: 4px;
+    }
+
+    /* Mode toggle */
+    .mode-toggle { display: flex; gap: 6px; margin-bottom: 8px; }
+    .mode-btn {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 6px;
+      padding: 5px 0;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+<h1>Web Eye Morse<span>目のウインクでモールス信号入力</span></h1>
+
+<div class="app-grid">
+
+  <!-- Camera + Eye state -->
+  <div class="card">
+    <div class="card-title">カメラ映像</div>
+    <div class="camera-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas"></canvas>
+      <div class="camera-overlay">
+        <div class="eye-indicator">
+          <div id="leftCircle" class="eye-circle"></div>
+          <span>左目 (－)</span>
+        </div>
+        <div class="eye-indicator">
+          <div id="rightCircle" class="eye-circle"></div>
+          <span>右目 (・)</span>
+        </div>
+      </div>
+    </div>
+    <button id="startBtn">カメラ開始</button>
+    <p id="status" style="margin-top:6px">カメラ開始ボタンを押してください</p>
+
+    <!-- Eye closure progress -->
+    <div class="eye-bars" style="margin-top:10px">
+      <div class="eye-bar-wrap">
+        <div class="eye-bar-label">
+          <span>右目 → <span class="dot-c" style="color:var(--dot-color)">・</span></span>
+          <span id="rightPct">0%</span>
+        </div>
+        <div class="eye-bar-track"><div class="eye-bar-fill" id="rightBar" style="width:0%"></div></div>
+      </div>
+      <div class="eye-bar-wrap">
+        <div class="eye-bar-label">
+          <span>左目 → <span style="color:var(--dash-color)">－</span></span>
+          <span id="leftPct">0%</span>
+        </div>
+        <div class="eye-bar-track"><div class="eye-bar-fill" id="leftBar" style="width:0%"></div></div>
+      </div>
+      <div class="eye-bar-wrap">
+        <div class="eye-bar-label">
+          <span>両目 → 消去</span>
+          <span id="bothPct">0%</span>
+        </div>
+        <div class="eye-bar-track"><div class="eye-bar-fill" id="bothBar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+      <div class="setting-row">
+        <label>閉眼判定 EAR</label>
+        <input type="range" id="earThreshold" min="0.10" max="0.35" step="0.01" value="0.20">
+        <span id="earVal">0.20</span>
+      </div>
+      <div class="setting-row">
+        <label>文字確定 待機(秒)</label>
+        <input type="range" id="decodeDelay" min="1.0" max="4.0" step="0.5" value="2.0">
+        <span id="delayVal">2.0s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input status -->
+  <div class="card">
+    <div class="card-title">入力中のモールス信号</div>
+    <div class="mode-toggle">
+      <button id="modeAlpha" class="mode-btn active" onclick="switchMode('alpha')">ABC（アルファベット）</button>
+      <button id="modeKana"  class="mode-btn"        onclick="switchMode('kana')">あいう（ひらがな）</button>
+    </div>
+    <div class="morse-current" id="morseDisplay">
+      <div class="morse-cursor"></div>
+    </div>
+    <div class="morse-hint">右目を閉じる→<span style="color:var(--dot-color)">・</span>　左目を閉じる→<span style="color:var(--dash-color)">－</span>　<span id="decodeCountdown"></span></div>
+
+    <div style="margin-top: 12px;">
+      <div class="card-title">確定した文字</div>
+      <div class="char-flash" id="charFlash"></div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <div class="card-title">テキストエリア（会話に使用）</div>
+      <textarea id="outputText" placeholder="ここに入力した文字が表示されます..."></textarea>
+      <div class="text-actions">
+        <button class="btn-sm" onclick="clearText()">全消去</button>
+        <button class="btn-sm" onclick="addSpace()">スペース</button>
+        <button class="btn-sm" onclick="deleteChar()">←削除</button>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;" class="instructions">
+      <strong>操作方法：</strong><br>
+      • <span class="dot-c">右目</span>を0.5秒以上閉じる → <span class="dot-c">・</span>（ドット）<br>
+      • <span class="dash-c">左目</span>を0.5秒以上閉じる → <span class="dash-c">－</span>（ダッシュ）<br>
+      • 両目を1秒以上閉じる → シーケンス消去 / 一文字削除<br>
+      • 2秒間入力なし → 文字を確定して出力
+    </div>
+  </div>
+
+  <!-- Morse table -->
+  <div class="card col-full">
+    <div class="card-title">モールス信号表</div>
+    <div id="alphaTableSection">
+      <div class="section-heading">アルファベット</div>
+      <div class="morse-table" id="morseTableAlpha"></div>
+      <div class="section-heading">数字</div>
+      <div class="morse-table" id="morseTableNum"></div>
+      <div class="section-heading">記号</div>
+      <div class="morse-table" id="morseTableSym"></div>
+    </div>
+    <div id="kanaTableSection" style="display:none">
+      <div class="morse-table-kana" id="morseTableKanaAll"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MediaPipe FaceMesh (Apache 2.0 License) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466862/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+
+<script>
+'use strict';
+
+// ─── Morse code table ────────────────────────────────────────────────────────
+// Using '.' for dot and '-' for dash internally
+const MORSE_TABLE = {
+  alpha: {
+    'A':'.-',  'B':'-...','C':'-.-.','D':'-..', 'E':'.',
+    'F':'..-.','G':'--.', 'H':'....','I':'..', 'J':'.---',
+    'K':'-.-', 'L':'.-..','M':'--', 'N':'-.', 'O':'---',
+    'P':'.--.','Q':'--.-','R':'.-.', 'S':'...','T':'-',
+    'U':'..-', 'V':'...-','W':'.--','X':'-..-','Y':'-.--',
+    'Z':'--..'
+  },
+  num: {
+    '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-',
+    '5':'.....','6':'-....','7':'--...','8':'---..','9':'----.'
+  },
+  sym: {
+    '.':'.-.-.-', ',':'--..--', '?':'..--..', "'":'.----.',
+    '!':'-.-.--', '/':'-..-.', '(':'-.--.', ')':'-.--.-',
+    '&':'.-...', ':':'---...', ';':'-.-.-.', '=':'-...-',
+    '+':'.-.-.', '-':'-....-', '_':'..--.-', '"':'.-..-.', '@':'.--.-.'
+  }
+};
+
+// Reverse lookup: morse string → character
+const MORSE_DECODE = {};
+[MORSE_TABLE.alpha, MORSE_TABLE.num, MORSE_TABLE.sym].forEach(group => {
+  Object.entries(group).forEach(([ch, code]) => { MORSE_DECODE[code] = ch; });
+});
+
+// ─── Japanese Kana Morse table (JARL standard) ────────────────────────────────
+const KANA_MORSE_TABLE = {
+  aa: {
+    'あ':'--.--', 'い':'.-',    'う':'..-',   'え':'-.---', 'お':'.-...'
+  },
+  ka: {
+    'か':'.-..', 'き':'-.-..',  'く':'...-',  'け':'-.--',  'こ':'----'
+  },
+  sa: {
+    'さ':'-.-.-', 'し':'--.-.', 'す':'---.-', 'せ':'.---.',  'そ':'---.'
+  },
+  ta: {
+    'た':'-.', 'ち':'..-.',     'つ':'.--.',   'て':'.-.--', 'と':'..-..'
+  },
+  na: {
+    'な':'.-.',  'に':'-.-.', 'ぬ':'....', 'ね':'--.-', 'の':'..--'
+  },
+  ha: {
+    'は':'-...', 'ひ':'--..-', 'ふ':'--..', 'へ':'.', 'ほ':'-..'
+  },
+  ma: {
+    'ま':'-..-', 'み':'..-.-', 'む':'-', 'め':'-...-', 'も':'-..-.'
+  },
+  ya: {
+    'や':'.--', 'ゆ':'-..--', 'よ':'--'
+  },
+  ra: {
+    'ら':'...', 'り':'--.',  'る':'-.--.',  'れ':'---', 'ろ':'.-.-'
+  },
+  wa: {
+    'わ':'-.-', 'を':'.---', 'ん':'.-.-.'
+  }
+};
+
+const KANA_MORSE_DECODE = {};
+Object.values(KANA_MORSE_TABLE).forEach(group => {
+  Object.entries(group).forEach(([ch, code]) => { KANA_MORSE_DECODE[code] = ch; });
+});
+
+// ─── Input mode ───────────────────────────────────────────────────────────────
+let inputMode = 'alpha'; // 'alpha' or 'kana'
+
+// ─── MediaPipe landmark indices ──────────────────────────────────────────────
+// EAR points: [top1, top2, bottom1, bottom2, left-corner, right-corner]
+const RIGHT_EYE_EAR = [160, 158, 144, 153, 33, 133]; // right eye landmarks
+const LEFT_EYE_EAR  = [385, 387, 380, 373, 362, 263]; // left eye landmarks
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let earThreshold = 0.20;
+let decodeDelayMs = 2000;
+let winkMinMs     = 500;   // min closure for wink
+let winkMaxMs     = 3000;  // max closure for wink (longer = both-eye action)
+let bothEyeMs     = 1000;  // both eyes closed threshold
+
+let rightCloseStart = null;
+let leftCloseStart  = null;
+let bothCloseStart  = null;
+let bothTriggered   = false; // prevent repeated triggers
+
+let currentMorse    = '';    // e.g. '.-'
+let decodeTimer     = null;
+let lastSymbolTime  = 0;
+let countdownInterval = null;
+
+let isRunning = false;
+let mediapipeReady = false;
+
+// ─── EAR calculation ─────────────────────────────────────────────────────────
+function dist(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function calcEAR(landmarks, indices) {
+  const [t1, t2, b1, b2, lc, rc] = indices.map(i => landmarks[i]);
+  const ear = (dist(t1, b1) + dist(t2, b2)) / (2.0 * dist(lc, rc));
+  return ear;
+}
+
+// ─── Morse logic ─────────────────────────────────────────────────────────────
+function addSymbol(sym) {
+  currentMorse += sym;
+  lastSymbolTime = Date.now();
+  updateMorseDisplay();
+  scheduleDecodeTimer();
+}
+
+function scheduleDecodeTimer() {
+  clearTimeout(decodeTimer);
+  clearInterval(countdownInterval);
+  const decodeAt = Date.now() + decodeDelayMs;
+  countdownInterval = setInterval(() => {
+    const remaining = (decodeAt - Date.now()) / 1000;
+    const el = document.getElementById('decodeCountdown');
+    if (remaining > 0) {
+      el.textContent = `確定まで ${remaining.toFixed(1)}s`;
+    } else {
+      el.textContent = '';
+      clearInterval(countdownInterval);
+    }
+  }, 50);
+  decodeTimer = setTimeout(decodeCurrentMorse, decodeDelayMs);
+}
+
+function decodeCurrentMorse() {
+  clearInterval(countdownInterval);
+  document.getElementById('decodeCountdown').textContent = '';
+  if (!currentMorse) return;
+  const table = inputMode === 'kana' ? KANA_MORSE_DECODE : MORSE_DECODE;
+  const decoded = table[currentMorse];
+  const ch = decoded || '?';
+  document.getElementById('outputText').value += ch;
+  showCharFlash(ch);
+  currentMorse = '';
+  updateMorseDisplay();
+}
+
+function showCharFlash(ch) {
+  const el = document.getElementById('charFlash');
+  el.style.animation = 'none';
+  el.textContent = ch;
+  // Force reflow
+  void el.offsetWidth;
+  el.style.animation = 'fadeout 1s forwards';
+}
+
+function updateMorseDisplay() {
+  const display = document.getElementById('morseDisplay');
+  display.innerHTML = '';
+  for (const c of currentMorse) {
+    const span = document.createElement('span');
+    span.className = 'morse-symbol ' + (c === '.' ? 'dot' : 'dash');
+    span.textContent = c === '.' ? '・' : '－';
+    display.appendChild(span);
+  }
+  const cursor = document.createElement('div');
+  cursor.className = 'morse-cursor';
+  display.appendChild(cursor);
+}
+
+function clearCurrentMorse() {
+  clearTimeout(decodeTimer);
+  clearInterval(countdownInterval);
+  document.getElementById('decodeCountdown').textContent = '';
+  currentMorse = '';
+  updateMorseDisplay();
+}
+
+function deleteChar() {
+  const ta = document.getElementById('outputText');
+  const val = ta.value;
+  if (val.length > 0) {
+    ta.value = val.slice(0, -1);
+  }
+}
+
+function clearText() {
+  document.getElementById('outputText').value = '';
+}
+
+function addSpace() {
+  document.getElementById('outputText').value += ' ';
+}
+
+// ─── Per-frame eye detection ──────────────────────────────────────────────────
+function onResults(results) {
+  const canvas  = document.getElementById('canvas');
+  const ctx     = canvas.getContext('2d');
+  const video   = document.getElementById('video');
+
+  canvas.width  = video.videoWidth  || canvas.offsetWidth;
+  canvas.height = video.videoHeight || canvas.offsetHeight;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+    setStatus('顔が検出されていません');
+    resetEyeUI();
+    return;
+  }
+
+  const landmarks = results.multiFaceLandmarks[0];
+  const now = Date.now();
+
+  // Scale landmarks to canvas
+  const scaled = landmarks.map(lm => ({
+    x: lm.x * canvas.width,
+    y: lm.y * canvas.height,
+    z: lm.z
+  }));
+
+  const rightEAR = calcEAR(scaled, RIGHT_EYE_EAR);
+  const leftEAR  = calcEAR(scaled, LEFT_EYE_EAR);
+
+  const rightClosed = rightEAR < earThreshold;
+  const leftClosed  = leftEAR  < earThreshold;
+
+  // Draw eye landmarks
+  drawEyeLandmarks(ctx, scaled);
+
+  // Update eye indicators
+  document.getElementById('rightCircle').classList.toggle('closed', rightClosed);
+  document.getElementById('leftCircle').classList.toggle('closed', leftClosed);
+
+  // ── Both eyes closed ──────────────────────────────────────────────────────
+  if (rightClosed && leftClosed) {
+    if (bothCloseStart === null) {
+      bothCloseStart = now;
+      bothTriggered  = false;
+    }
+    const bothDuration = now - bothCloseStart;
+    const bothPct = Math.min(100, (bothDuration / bothEyeMs) * 100);
+    updateBar('bothBar', 'bothPct', bothPct);
+
+    if (bothDuration >= bothEyeMs && !bothTriggered) {
+      bothTriggered = true;
+      if (currentMorse.length > 0) {
+        clearCurrentMorse();
+        setStatus('シーケンスを消去しました');
+      } else {
+        deleteChar();
+        setStatus('一文字削除しました');
+      }
+    }
+    // Reset wink timers when both eyes closed
+    rightCloseStart = null;
+    leftCloseStart  = null;
+    updateBar('rightBar', 'rightPct', 0);
+    updateBar('leftBar', 'leftPct', 0);
+    return;
+  } else {
+    // Reset both-eye tracking
+    bothCloseStart = null;
+    bothTriggered  = false;
+    updateBar('bothBar', 'bothPct', 0);
+  }
+
+  // ── Right eye wink (right closed, left open) ──────────────────────────────
+  if (rightClosed && !leftClosed) {
+    if (rightCloseStart === null) rightCloseStart = now;
+    const dur = now - rightCloseStart;
+    const pct = Math.min(100, (dur / winkMinMs) * 100);
+    updateBar('rightBar', 'rightPct', pct);
+    setStatus(`右目閉じ中… ${(dur/1000).toFixed(1)}s`);
+  } else {
+    if (rightCloseStart !== null) {
+      const dur = now - rightCloseStart;
+      if (dur >= winkMinMs && dur < winkMaxMs) {
+        addSymbol('.');
+        setStatus('右目ウインク → ・');
+      }
+      rightCloseStart = null;
+    }
+    updateBar('rightBar', 'rightPct', 0);
+  }
+
+  // ── Left eye wink (left closed, right open) ───────────────────────────────
+  if (leftClosed && !rightClosed) {
+    if (leftCloseStart === null) leftCloseStart = now;
+    const dur = now - leftCloseStart;
+    const pct = Math.min(100, (dur / winkMinMs) * 100);
+    updateBar('leftBar', 'leftPct', pct);
+    setStatus(`左目閉じ中… ${(dur/1000).toFixed(1)}s`);
+  } else {
+    if (leftCloseStart !== null) {
+      const dur = now - leftCloseStart;
+      if (dur >= winkMinMs && dur < winkMaxMs) {
+        addSymbol('-');
+        setStatus('左目ウインク → －');
+      }
+      leftCloseStart = null;
+    }
+    updateBar('leftBar', 'leftPct', 0);
+  }
+
+  if (!rightClosed && !leftClosed) {
+    setStatus('検出中… EAR L:' + leftEAR.toFixed(2) + ' R:' + rightEAR.toFixed(2));
+  }
+}
+
+function drawEyeLandmarks(ctx, landmarks) {
+  const eyeGroups = [
+    { indices: [33,160,158,133,153,144,246,161,163,144,145,153,154,155,133,173,157,158,159,160,161,246], color: '#4f8ef7' },
+    { indices: [362,385,387,263,373,380,466,388,390,249,263,373,374,380,381,382,362,398,384,385,386,387], color: '#f7a24f' }
+  ];
+  ctx.lineWidth = 1;
+  eyeGroups.forEach(({ indices, color }) => {
+    ctx.strokeStyle = color + 'aa';
+    ctx.fillStyle   = color + '55';
+    ctx.beginPath();
+    let first = true;
+    indices.forEach(i => {
+      const p = landmarks[i];
+      if (first) { ctx.moveTo(p.x, p.y); first = false; }
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+  });
+}
+
+function updateBar(barId, pctId, pct) {
+  document.getElementById(barId).style.width = pct + '%';
+  document.getElementById(pctId).textContent  = Math.round(pct) + '%';
+}
+
+function resetEyeUI() {
+  updateBar('rightBar', 'rightPct', 0);
+  updateBar('leftBar', 'leftPct', 0);
+  updateBar('bothBar', 'bothPct', 0);
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+// ─── MediaPipe setup ──────────────────────────────────────────────────────────
+function startCamera() {
+  const video = document.getElementById('video');
+  document.getElementById('startBtn').classList.add('hidden');
+  setStatus('MediaPipeを読み込み中...');
+
+  const faceMesh = new FaceMesh({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`
+  });
+
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+
+  faceMesh.onResults(onResults);
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      if (faceMesh) await faceMesh.send({ image: video });
+    },
+    width: 640,
+    height: 480
+  });
+
+  camera.start()
+    .then(() => {
+      setStatus('カメラ起動完了。顔を映してください。');
+      isRunning = true;
+    })
+    .catch(err => {
+      setStatus('カメラエラー: ' + err.message);
+      document.getElementById('startBtn').classList.remove('hidden');
+    });
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+document.getElementById('earThreshold').addEventListener('input', function() {
+  earThreshold = parseFloat(this.value);
+  document.getElementById('earVal').textContent = earThreshold.toFixed(2);
+});
+
+document.getElementById('decodeDelay').addEventListener('input', function() {
+  decodeDelayMs = parseFloat(this.value) * 1000;
+  document.getElementById('delayVal').textContent = parseFloat(this.value).toFixed(1) + 's';
+});
+
+document.getElementById('startBtn').addEventListener('click', startCamera);
+
+// ─── Build Morse code table ───────────────────────────────────────────────────
+function renderMorseCode(sym) {
+  let html = '';
+  for (const c of sym) {
+    const ch = c === '.' ? '<span class="d">・</span>' : '<span class="sh">－</span>';
+    html += ch;
+  }
+  return html;
+}
+
+function buildTable(containerId, group) {
+  const container = document.getElementById(containerId);
+  Object.entries(group).forEach(([char, code]) => {
+    const div = document.createElement('div');
+    div.className = 'morse-entry';
+    div.innerHTML = `<span class="char">${char}</span><span class="code">${renderMorseCode(code)}</span>`;
+    container.appendChild(div);
+  });
+}
+
+buildTable('morseTableAlpha', MORSE_TABLE.alpha);
+buildTable('morseTableNum',   MORSE_TABLE.num);
+buildTable('morseTableSym',   MORSE_TABLE.sym);
+
+// Build kana table (column-flow: each 行 is one column, あいうえお flows downward)
+(function buildKanaTable() {
+  const container = document.getElementById('morseTableKanaAll');
+  [
+    KANA_MORSE_TABLE.aa, KANA_MORSE_TABLE.ka, KANA_MORSE_TABLE.sa,
+    KANA_MORSE_TABLE.ta, KANA_MORSE_TABLE.na, KANA_MORSE_TABLE.ha,
+    KANA_MORSE_TABLE.ma, KANA_MORSE_TABLE.ya, KANA_MORSE_TABLE.ra,
+    KANA_MORSE_TABLE.wa
+  ].forEach(group => {
+    const entries = Object.entries(group);
+    for (let i = 0; i < 5; i++) {
+      const div = document.createElement('div');
+      div.className = 'morse-entry';
+      if (i < entries.length) {
+        const [char, code] = entries[i];
+        div.innerHTML = `<span class="char">${char}</span><span class="code">${renderMorseCode(code)}</span>`;
+      } else {
+        div.style.visibility = 'hidden'; // placeholder for rows shorter than 5
+      }
+      container.appendChild(div);
+    }
+  });
+})();
+
+// ─── Mode switch ─────────────────────────────────────────────────────────────
+function switchMode(mode) {
+  inputMode = mode;
+  clearCurrentMorse();
+  document.getElementById('modeAlpha').classList.toggle('active', mode === 'alpha');
+  document.getElementById('modeKana').classList.toggle('active',  mode === 'kana');
+  document.getElementById('alphaTableSection').style.display = mode === 'alpha' ? '' : 'none';
+  document.getElementById('kanaTableSection').style.display  = mode === 'kana'  ? '' : 'none';
+}
+
+// Initialize display
+updateMorseDisplay();
+</script>
+</body>
+</html>
