@@ -266,6 +266,15 @@
     }
     .morse-entry .code .d { color: var(--dot-color); }
     .morse-entry .code .sh { color: var(--dash-color); }
+    .morse-entry[data-char] {
+      cursor: pointer;
+      transition: border-color 0.1s, background 0.1s;
+    }
+    .morse-entry[data-char]:hover {
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+    .morse-entry[data-char]:active { background: var(--border); }
 
     .section-heading {
       font-size: 0.72rem;
@@ -851,7 +860,12 @@ function buildTable(containerId, group) {
   Object.entries(group).forEach(([char, code]) => {
     const div = document.createElement('div');
     div.className = 'morse-entry';
+    div.dataset.char = char;
     div.innerHTML = `<span class="char">${char}</span><span class="code">${renderMorseCode(code)}</span>`;
+    div.addEventListener('click', () => {
+      document.getElementById('outputText').value += char;
+      showCharFlash(char);
+    });
     container.appendChild(div);
   });
 }
@@ -875,7 +889,12 @@ buildTable('morseTableSym',   MORSE_TABLE.sym);
       div.className = 'morse-entry';
       if (i < entries.length) {
         const [char, code] = entries[i];
+        div.dataset.char = char;
         div.innerHTML = `<span class="char">${char}</span><span class="code">${renderMorseCode(code)}</span>`;
+        div.addEventListener('click', () => {
+          document.getElementById('outputText').value += char;
+          showCharFlash(char);
+        });
       } else {
         div.style.visibility = 'hidden'; // placeholder for rows shorter than 5
       }
